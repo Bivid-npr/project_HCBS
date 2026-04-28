@@ -1,12 +1,42 @@
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from db.connection import get_connection
-from models.enums import BookingStatus, SeatStatus
+from models.enums import BookingStatus, UserRole
 from controller.booking_controller import BookingController
 
 
 class CancellationController:
 
-    CANCELLATION_CHARGE_PERCENT = 0.50
+    CANCELLATION_CHARGE_PERCENT = Decimal("0.50")
+
+    def __init__(self):
+        self.last_error = ""
+
+    def _is_actor_authorized_for_listing(self, actor, listing_id) -> bool:
+        if actor is None:
+            return False
+        if actor.role in (UserRole.ADMIN, UserRole.MANAGER):
+            return True
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT s.cinema_id
+                FROM listing l
+                JOIN screen s ON l.screen_id = s.screen_id
+                WHERE l.listing_id = %s;
+            """, (listing_id,))
+            row = cur.fetchone()
+            if not row:
+                return False
+            return (
+                actor.role == UserRole.BOOKING_STAFF
+                and getattr(actor, "assigned_cinema_id", None) == row[0]
+            )
+        finally:
+            cur.close()
+            conn.close()
 
     def validate_cancellation_date(self, listing_id) -> bool:
         conn = get_connection()
@@ -22,24 +52,36 @@ class CancellationController:
         return date.today() < show_date
     
     def calculate_refund(self, total_price) -> float:
-        charge = round(total_price * self.CANCELLATION_CHARGE_PERCENT, 2)
-        return round(total_price - charge, 2)
+        amount = Decimal(str(total_price))
+        charge = (amount * self.CANCELLATION_CHARGE_PERCENT).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        return (amount - charge).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     
-    def cancel_booking(self, booking_reference) -> bool:
+    def cancel_booking(self, booking_reference, actor=None) -> bool:
+        self.last_error = ""
         booking_ctrl = BookingController()
         booking = booking_ctrl.find_booking(booking_reference)
         
         if not booking:
-            print("Booking not found.")
-            return False
+            self.last_error = "Booking not found. Check the booking reference and try again."
+            print(self.last_error)
+            return None
 
         if booking.status == BookingStatus.CANCELLED:
-            print("Booking already cancelled.")
-            return False
+            self.last_error = "This booking has already been cancelled."
+            print(self.last_error)
+            return None
+
+        if not self._is_actor_authorized_for_listing(actor, booking.listing_id):
+            self.last_error = "You are not authorized to cancel this booking."
+            print(self.last_error)
+            return None
 
         if not self.validate_cancellation_date(booking.listing_id):
-            print("Cannot cancel on the day of the show or after.")
-            return False
+            self.last_error = "Cannot cancel on the day of the show or after."
+            print(self.last_error)
+            return None
 
         refund = self.calculate_refund(booking.total_price)
 
@@ -47,18 +89,6 @@ class CancellationController:
         cur = conn.cursor()
         
         try:
-            cur.execute("""
-                SELECT seat_id FROM booking_seat
-                WHERE booking_id = %s;
-            """, (booking.booking_id,))
-            seats = cur.fetchall()
-
-            for (seat_id,) in seats:
-                cur.execute("""
-                    UPDATE seat SET status = 'AVAILABLE'
-                    WHERE seat_id = %s;
-                """, (seat_id,))
-
             cur.execute("""
                 UPDATE booking SET status = 'CANCELLED'
                 WHERE booking_id = %s;
@@ -70,7 +100,8 @@ class CancellationController:
 
         except Exception as e:
             conn.rollback()
-            print("Cancellation failed:", e)
+            self.last_error = "Cancellation failed. Please try again."
+            print("Cancellation failed.")
             return None
         finally:
             cur.close()
