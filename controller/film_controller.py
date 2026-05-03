@@ -2,9 +2,19 @@ from db.connection import get_connection
 from models.film import Film
 from models.listing import Listing
 from models.enums import ShowTime
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 class FilmController:
+    def __init__(self):
+        self.last_error = ""
+
+    def _validate_listing_date(self, show_date) -> bool:
+        self.last_error = ""
+        if show_date < date.today():
+            self.last_error = "Listing date cannot be in the past."
+            return False
+        return True
+
     def get_all_films(self) -> list:
         conn=get_connection()
         cur =conn.cursor()
@@ -73,7 +83,7 @@ class FilmController:
             return cur.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print("Error updating film:", e)
+            print("Error updating film.")
             return False
         finally:
             cur.close()
@@ -97,7 +107,7 @@ class FilmController:
         
         except Exception as e:
             conn.rollback()
-            print("Error adding film:", e)
+            print("Error adding film.")
             return False
         
         finally:
@@ -107,25 +117,77 @@ class FilmController:
     
   
     def remove_film(self, film_id) -> bool:
-        conn =get_connection()
+        self.last_error = ""
+        conn = get_connection()
         cur = conn.cursor()
         try:
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM listing
+                WHERE film_id = %s
+                  AND show_date >= CURRENT_DATE;
+            """, (film_id,))
+            active_listing_count = cur.fetchone()[0]
+            if active_listing_count > 0:
+                conn.rollback()
+                self.last_error = (
+                    "Cannot remove this film until all its listings have expired."
+                )
+                print(self.last_error)
+                return False
+
+            cur.execute("""
+                DELETE FROM receipt
+                WHERE booking_id IN (
+                    SELECT b.booking_id
+                    FROM booking b
+                    JOIN listing l ON b.listing_id = l.listing_id
+                    WHERE l.film_id = %s
+                );
+            """, (film_id,))
+            cur.execute("""
+                DELETE FROM booking_seat
+                WHERE booking_id IN (
+                    SELECT b.booking_id
+                    FROM booking b
+                    JOIN listing l ON b.listing_id = l.listing_id
+                    WHERE l.film_id = %s
+                );
+            """, (film_id,))
+            cur.execute("""
+                DELETE FROM booking
+                WHERE listing_id IN (
+                    SELECT listing_id
+                    FROM listing
+                    WHERE film_id = %s
+                );
+            """, (film_id,))
+            cur.execute("DELETE FROM listing WHERE film_id = %s;", (film_id,))
             cur.execute("DELETE FROM film WHERE film_id= %s;", (film_id,))
+            deleted_films = cur.rowcount
+            if deleted_films == 0:
+                conn.rollback()
+                self.last_error = "Film not found."
+                return False
             conn.commit()
             return True
         
         except Exception as e:
             conn.rollback()
-            print("Error removing film:", e)
+            self.last_error = "Error removing film."
+            print(self.last_error)
             return False
         
         finally:
             cur.close()
-            conn.close()     
-      
-          
+            conn.close()
+
     def add_listing(self, film_id, screen_id, show_date,
                      show_time, show_time_category: ShowTime) -> bool:
+        if not self._validate_listing_date(show_date):
+            print(self.last_error)
+            return False
+
         conn = get_connection()
         cur = conn.cursor()
         
@@ -141,7 +203,7 @@ class FilmController:
         
         except Exception as e:
             conn.rollback()
-            print("Error adding lisitng: ", e)
+            print("Error adding listing.")
             return False
         
         finally:
@@ -160,7 +222,7 @@ class FilmController:
 
         except Exception as e:
             conn.rollback()
-            print("Error removing listing: ",e)
+            print("Error removing listing.")
             return False
 
         finally:
@@ -184,6 +246,10 @@ class FilmController:
 
     def update_listing(self, listing_id, film_id, screen_id, show_date,
                        show_time, show_time_category: ShowTime) -> bool:
+        if not self._validate_listing_date(show_date):
+            print(self.last_error)
+            return False
+
         conn = get_connection()
         cur = conn.cursor()
         try:
@@ -196,7 +262,7 @@ class FilmController:
             return cur.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print("Error updating listing:", e)
+            print("Error updating listing.")
             return False
         finally:
             cur.close()
