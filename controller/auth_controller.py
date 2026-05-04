@@ -79,7 +79,8 @@ class AuthController:
             return True, user_id
         except Exception as e:
             conn.rollback()
-            return False, str(e)
+            print("User registration failed.")
+            return False, "Registration failed. Please check the details and try again."
         finally:
             cur.close()
             conn.close()

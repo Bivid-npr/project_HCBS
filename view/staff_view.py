@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                              QLabel, QPushButton, QTabWidget, QLineEdit,
-                              QComboBox, QCompleter, QSpinBox, QScrollArea, QMessageBox, QFrame,
-                              QDialog, QGridLayout, QSizePolicy, QFileDialog)
+                              QLabel, QPushButton, QLineEdit,
+                              QComboBox, QCompleter, QScrollArea, QMessageBox, QFrame,
+                              QDialog, QGridLayout, QSizePolicy, QFileDialog,
+                              QStackedWidget, QButtonGroup)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QTextDocument
 from PyQt6.QtPrintSupport import QPrinter
@@ -23,6 +24,16 @@ ACCENT = "#8ab4f8"
 BORDER = "#5f6368"
 SUCCESS = "#81c995"
 DANGER = "#f28b82"
+
+
+def _listing_is_bookable(listing):
+    show_time = listing.show_time
+    if hasattr(show_time, "hour"):
+        start_time = datetime.time(show_time.hour, show_time.minute, getattr(show_time, "second", 0))
+    else:
+        total_seconds = int(show_time.total_seconds())
+        start_time = (datetime.datetime.min + datetime.timedelta(seconds=total_seconds)).time()
+    return datetime.datetime.combine(listing.show_date, start_time) >= datetime.datetime.now()
 
 BTN = f"""
     QPushButton {{
@@ -54,6 +65,95 @@ INPUT_STYLE = f"""
         selection-background-color: {ACCENT};
     }}
 """
+
+NAV_STYLE = f"""
+    QPushButton {{
+        background-color: transparent;
+        color: {TEXT};
+        font-size: 13px;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 10px 12px;
+    }}
+    QPushButton:hover {{
+        background-color: {INPUT};
+        border-color: {BORDER};
+    }}
+    QPushButton:checked {{
+        background-color: {ACCENT};
+        color: {DARK};
+        font-weight: bold;
+    }}
+"""
+
+PAGE_STYLE = f"QWidget#pageShell {{ background-color: {DARK}; }}"
+
+CARD_STYLE = f"""
+    QFrame {{
+        background-color: {CARD};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+    }}
+"""
+
+UI_INPUT = f"""
+    QLineEdit, QComboBox, QSpinBox, QDateEdit {{
+        background-color: #1c1d20;
+        color: {TEXT};
+        border: 1px solid #3a3b3f;
+        border-radius: 6px;
+        padding: 8px 11px;
+        font-size: 12px;
+        min-height: 18px;
+    }}
+    QLineEdit:hover, QComboBox:hover, QSpinBox:hover,
+    QDateEdit:hover {{ border: 1px solid #50525a; }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
+    QDateEdit:focus {{
+        border: 1px solid {ACCENT}; background-color: #1f2024;
+    }}
+    QComboBox::drop-down, QDateEdit::drop-down {{
+        border: none; width: 22px;
+    }}
+    QComboBox QAbstractItemView {{
+        background-color: #1c1d20; color: {TEXT};
+        border: 1px solid {BORDER};
+        selection-background-color: {ACCENT};
+        selection-color: {DARK}; outline: none;
+    }}
+"""
+
+UI_BTN = f"""
+    QPushButton {{
+        background-color: {ACCENT}; color: {DARK};
+        font-weight: 600; font-size: 12px;
+        border-radius: 7px; padding: 10px 16px; border: none;
+    }}
+    QPushButton:hover {{ background-color: #aecbfa; }}
+    QPushButton:pressed {{ background-color: #7aa7f7; }}
+"""
+
+UI_BTN_DANGER = f"""
+    QPushButton {{
+        background-color: {DANGER}; color: {DARK};
+        font-weight: 600; font-size: 12px;
+        border-radius: 7px; padding: 10px 16px; border: none;
+    }}
+    QPushButton:hover {{ background-color: #ee675c; }}
+    QPushButton:pressed {{ background-color: #d05a52; }}
+"""
+
+UI_BTN_GHOST = f"""
+    QPushButton {{
+        background-color: transparent; color: {TEXT};
+        font-weight: 500; font-size: 12px;
+        border-radius: 7px; padding: 9px 14px;
+        border: 1px solid #3a3b3f;
+    }}
+    QPushButton:hover {{ background-color: #2a2b2f; border-color: #50525a; }}
+"""
+
 
 class TicketDialog(QDialog):
     def __init__(self, parent, booking_ref, film_title, cinema_name, city_name,
@@ -186,12 +286,12 @@ class TicketDialog(QDialog):
         f_layout.setContentsMargins(24, 10, 24, 14)
 
         print_btn = QPushButton("Print PDF")
-        print_btn.setStyleSheet(BTN)
+        print_btn.setStyleSheet(UI_BTN)
         print_btn.setFixedHeight(36)
         print_btn.clicked.connect(self._print_pdf)
 
         done_btn = QPushButton("Done")
-        done_btn.setStyleSheet(BTN)
+        done_btn.setStyleSheet(UI_BTN)
         done_btn.setFixedHeight(36)
         done_btn.clicked.connect(self.accept)
 
@@ -259,7 +359,7 @@ class StaffView(QMainWindow):
         self._selected_seat_ids = []
         self._selected_seat_nums = []
         self.setWindowTitle(f"Horizon Cinemas - Staff: {user.full_name}")
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(1100, 700)
         self._build_ui()
 
     def _assigned_cinema_name(self):
@@ -280,16 +380,20 @@ class StaffView(QMainWindow):
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Header
+        # ── Header ────────────────────────────────────────────────────────
         header = QFrame()
         header.setStyleSheet(f"background-color: {CARD}; border-bottom: 1px solid {BORDER};")
-        header.setFixedHeight(55)
+        header.setFixedHeight(72)
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(20, 0, 20, 0)
+        h_layout.setContentsMargins(24, 0, 24, 0)
+        h_layout.setSpacing(14)
 
         title_lbl = QLabel("Horizon Cinemas")
-        title_lbl.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        title_lbl.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         title_lbl.setStyleSheet(f"color: {TEXT};")
+
+        subtitle_lbl = QLabel("Booking Staff portal")
+        subtitle_lbl.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
 
         assigned_cinema = self._assigned_cinema_name()
         user_lbl = QLabel(f"  {self.user.full_name}  |  Booking Staff  |  {assigned_cinema}")
@@ -301,41 +405,123 @@ class StaffView(QMainWindow):
         logout_btn.clicked.connect(self._logout)
 
         h_layout.addWidget(title_lbl)
+        h_layout.addWidget(subtitle_lbl)
         h_layout.addStretch()
         h_layout.addWidget(user_lbl)
         h_layout.addWidget(logout_btn)
 
-        # Tabs
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(f"""
-            QTabWidget::pane {{ border: none; background: {DARK}; }}
-            QTabBar::tab {{
-                background: {CARD}; color: {MUTED};
-                padding: 10px 20px; font-size: 13px;
-            }}
-            QTabBar::tab:selected {{ color: {ACCENT};
-                border-bottom: 2px solid {ACCENT}; }}
-        """)
+        # ── Body (sidebar + content) ──────────────────────────────────────
+        body = QWidget()
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(16, 16, 16, 16)
+        body_layout.setSpacing(16)
 
-        self.tabs.addTab(self._build_listings_tab(), "Film Listings")
-        self.tabs.addTab(self._build_booking_tab(), "Book Tickets")
-        self.tabs.addTab(self._build_cancel_tab(), "Cancel Booking")
+        # Sidebar
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(220)
+        sidebar.setStyleSheet(
+            f"QFrame#sidebar {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 4px; }}"
+        )
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(16, 16, 16, 16)
+        sidebar_layout.setSpacing(8)
+
+        nav_title = QLabel("Workspace")
+        nav_title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        nav_title.setStyleSheet(f"color: {TEXT}; background: transparent; border: none;")
+
+        nav_hint = QLabel("Choose one task at a time.")
+        nav_hint.setWordWrap(True)
+        nav_hint.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent; border: none;")
+
+        sidebar_layout.addWidget(nav_title)
+        sidebar_layout.addWidget(nav_hint)
+
+        self._nav_group = QButtonGroup(self)
+        self._nav_group.setExclusive(True)
+        self._nav_buttons = []
+
+        self.pages = QStackedWidget()
+        self.pages.setStyleSheet(PAGE_STYLE)
+
+        nav_pages = [
+            ("Film Listings", self._build_listings_tab()),
+            ("Book Tickets",  self._build_booking_tab()),
+            ("Cancel Booking", self._build_cancel_tab()),
+        ]
+
+        for index, (label, page_widget) in enumerate(nav_pages):
+            self.pages.addWidget(page_widget)
+            nav_button = QPushButton(label)
+            nav_button.setCheckable(True)
+            nav_button.setStyleSheet(NAV_STYLE)
+            nav_button.clicked.connect(
+                lambda _=False, page_index=index: self._set_page(page_index))
+            self._nav_group.addButton(nav_button)
+            self._nav_buttons.append(nav_button)
+            sidebar_layout.addWidget(nav_button)
+
+        sidebar_layout.addStretch()
+
+        content_shell = QFrame()
+        content_shell.setStyleSheet(f"background-color: {DARK}; border: none;")
+        content_layout = QVBoxLayout(content_shell)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(self.pages)
+
+        body_layout.addWidget(sidebar)
+        body_layout.addWidget(content_shell, 1)
 
         main_layout.addWidget(header)
-        main_layout.addWidget(self.tabs)
+        main_layout.addWidget(body, 1)
+
+        self._set_page(0)
+
+    def _set_page(self, index):
+        self.pages.setCurrentIndex(index)
+        for btn_index, button in enumerate(self._nav_buttons):
+            button.setChecked(btn_index == index)
+        self._refresh_page_data(index)
+
+    def _refresh_page_data(self, index):
+        refreshers = {
+            0: [self._load_listings],
+            1: [self._load_booking_listing_options],
+        }
+        for refresh in refreshers.get(index, []):
+            refresh()
+
+    # ── Film Listings page ────────────────────────────────────────────────
 
     def _build_listings_tab(self):
         widget = QWidget()
+        widget.setObjectName("pageShell")
         widget.setStyleSheet(f"background-color: {DARK};")
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(20)
 
+        # Page header
+        hdr = QVBoxLayout()
+        hdr.setSpacing(4)
+        title = QLabel("Film Listings")
+        title.setStyleSheet(f"color: {TEXT}; font-size: 22px; font-weight: 700;")
+        sub = QLabel("View scheduled films at your cinema")
+        sub.setStyleSheet(f"color: {MUTED}; font-size: 13px;")
+        hdr.addWidget(title)
+        hdr.addWidget(sub)
+        layout.addLayout(hdr)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
         refresh_btn = QPushButton("Refresh Listings")
-        refresh_btn.setStyleSheet(BTN)
-        refresh_btn.setFixedWidth(150)
+        refresh_btn.setStyleSheet(UI_BTN)
+        refresh_btn.setFixedWidth(160)
         refresh_btn.clicked.connect(self._load_listings)
-        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        toolbar.addWidget(refresh_btn)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -369,7 +555,10 @@ class StaffView(QMainWindow):
             if w:
                 w.deleteLater()
 
-        listings = self.film_ctrl.get_listings_for_cinema(self.user.assigned_cinema_id)
+        listings = [
+            listing for listing in self.film_ctrl.get_listings_for_cinema(self.user.assigned_cinema_id)
+            if _listing_is_bookable(listing)
+        ]
         films = {f.film_id: f for f in self.film_ctrl.get_all_films()}
 
         groups = defaultdict(list)
@@ -555,8 +744,9 @@ class StaffView(QMainWindow):
             btn_c_layout = QHBoxLayout(btn_cell)
             btn_c_layout.setContentsMargins(8, 6, 8, 6)
             book_btn = QPushButton("Book")
-            book_btn.setStyleSheet(BTN)
-            book_btn.setFixedHeight(28)
+            book_btn.setStyleSheet(UI_BTN)
+            book_btn.setFixedHeight(30)
+            book_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             book_btn.clicked.connect(
                 lambda _, lid=listing.listing_id: self._book_from_listing(lid))
             btn_c_layout.addWidget(book_btn)
@@ -572,23 +762,76 @@ class StaffView(QMainWindow):
 
         return card
 
-    def _build_booking_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(6)
+    # ── Book Tickets page ─────────────────────────────────────────────────
 
-        def lbl(text):
+    def _build_booking_tab(self):
+        outer = QScrollArea()
+        outer.setObjectName("pageShell")
+        outer.setWidgetResizable(True)
+        outer.setFrameShape(QFrame.Shape.NoFrame)
+        outer.setStyleSheet(f"""
+            QScrollArea#pageShell {{ background-color: {DARK}; border: none; }}
+            QScrollBar:vertical {{ background: transparent; width: 8px; margin: 4px; }}
+            QScrollBar::handle:vertical {{ background: #3a3b3f; border-radius: 4px; min-height: 24px; }}
+            QScrollBar::handle:vertical:hover {{ background: #50525a; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+
+        widget = QWidget()
+        widget.setObjectName("pageShell")
+        page_layout = QVBoxLayout(widget)
+        page_layout.setContentsMargins(28, 24, 28, 28)
+        page_layout.setSpacing(20)
+
+        def fl(text):
             l = QLabel(text)
-            l.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+            l.setStyleSheet(
+                f"color: {MUTED}; font-size: 10px; font-weight: 600; "
+                f"letter-spacing: 0.5px; background: transparent;"
+            )
             return l
 
+        def thin_sep():
+            w = QWidget()
+            w.setFixedHeight(1)
+            w.setStyleSheet(f"background-color: {BORDER};")
+            return w
+
+        # Page header
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(0)
+        hdr_row.setContentsMargins(0, 0, 0, 0)
+        tb = QVBoxLayout()
+        tb.setSpacing(4)
+        tb.setContentsMargins(0, 0, 0, 0)
+        pg_title = QLabel("Book Tickets")
+        pg_title.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        pg_title.setStyleSheet(f"color: {TEXT};")
+        pg_sub = QLabel("Select a listing, choose seats and confirm a booking.")
+        pg_sub.setStyleSheet(f"color: {MUTED}; font-size: 13px;")
+        tb.addWidget(pg_title)
+        tb.addWidget(pg_sub)
+        hdr_row.addLayout(tb)
+        hdr_row.addStretch()
+
+        # ── Listing selector card ─────────────────────────────────────────
+        sel_card = QFrame()
+        sel_card.setObjectName("selCard")
+        sel_card.setStyleSheet(
+            f"QFrame#selCard {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 4px; }}"
+        )
+        sel_cl = QVBoxLayout(sel_card)
+        sel_cl.setContentsMargins(20, 18, 20, 18)
+        sel_cl.setSpacing(8)
+
         self.b_listing_id = QComboBox()
-        self.b_listing_id.setStyleSheet(INPUT_STYLE)
+        self.b_listing_id.setStyleSheet(UI_INPUT)
+        self.b_listing_id.setMinimumHeight(38)
         self.b_listing_id.currentIndexChanged.connect(self._on_listing_changed)
+        self.b_listing_id.activated.connect(self._on_listing_changed)
         self._load_booking_listing_options()
 
-        self.listing_info_lbl = QLabel("Select a listing ID to see film details")
+        self.listing_info_lbl = QLabel("Select a listing to see film details")
         self.listing_info_lbl.setStyleSheet(f"""
             background-color: {INPUT}; color: {MUTED};
             border: 1px solid {BORDER}; border-radius: 4px;
@@ -597,89 +840,374 @@ class StaffView(QMainWindow):
         self.listing_info_lbl.setWordWrap(True)
         self.listing_info_lbl.setMinimumHeight(28)
 
-        select_btn = QPushButton("Select Seats")
-        select_btn.setStyleSheet(BTN)
-        select_btn.clicked.connect(self._open_seat_map)
-
         self.b_seats_info = QLabel("No seats selected")
-        self.b_seats_info.setStyleSheet(f"""
-            background-color: {INPUT}; color: {MUTED};
-            border: 1px solid {BORDER}; border-radius: 4px;
-            padding: 6px 8px; font-size: 11px;
-        """)
-        self.b_seats_info.setWordWrap(True)
+        self.b_seats_info.setStyleSheet(
+            f"color: {MUTED}; font-size: 11px; background: transparent;"
+        )
+
+        sel_cl.addWidget(fl("LISTING"))
+        sel_cl.addWidget(self.b_listing_id)
+        sel_cl.addWidget(self.listing_info_lbl)
+
+        seat_card = QFrame()
+        seat_card.setObjectName("seatCard")
+        self.b_seat_card = seat_card
+        seat_card.setStyleSheet(
+            f"QFrame#seatCard {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 4px; }}"
+        )
+        seat_cl = QVBoxLayout(seat_card)
+        seat_cl.setContentsMargins(1, 1, 1, 1)
+        seat_cl.setSpacing(0)
+
+        seat_hdr = QWidget()
+        seat_hdr.setFixedHeight(54)
+        seat_hdr_h = QHBoxLayout(seat_hdr)
+        seat_hdr_h.setContentsMargins(22, 0, 22, 0)
+        seat_hdr_h.setSpacing(12)
+        self.b_seat_map_title = QLabel("Seat Map")
+        self.b_seat_map_title.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        self.b_seat_map_title.setStyleSheet(f"color: {TEXT}; background: transparent;")
+        seat_hdr_h.addWidget(self.b_seat_map_title)
+        seat_hdr_h.addStretch()
+        seat_hdr_h.addWidget(self.b_seats_info)
+
+        seat_div = QWidget()
+        seat_div.setFixedHeight(1)
+        seat_div.setStyleSheet(f"background-color: {BORDER};")
+
+        self.b_seat_map_scroll = QScrollArea()
+        self.b_seat_map_scroll.setWidgetResizable(True)
+        self.b_seat_map_scroll.setMinimumHeight(520)
+        self.b_seat_map_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.b_seat_map_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.b_seat_map_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.b_seat_map_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.b_seat_map_scroll.setStyleSheet(f"QScrollArea {{ background-color: {CARD}; border: none; }}")
+        self.b_seat_map_body = QWidget()
+        self.b_seat_map_body.setStyleSheet(f"background-color: {CARD};")
+        self.b_seat_map_layout = QVBoxLayout(self.b_seat_map_body)
+        self.b_seat_map_layout.setContentsMargins(16, 16, 16, 16)
+        self.b_seat_map_layout.setSpacing(10)
+        self.b_seat_map_scroll.setWidget(self.b_seat_map_body)
+
+        seat_cl.addWidget(seat_hdr)
+        seat_cl.addWidget(seat_div)
+        seat_cl.addWidget(self.b_seat_map_scroll)
+
+        # ── Customer details card ─────────────────────────────────────────
+        det_card = QFrame()
+        det_card.setObjectName("detCard")
+        det_card.setStyleSheet(
+            f"QFrame#detCard {{ background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 4px; }}"
+        )
+        det_cl = QVBoxLayout(det_card)
+        det_cl.setContentsMargins(20, 18, 20, 20)
+        det_cl.setSpacing(0)
+
+        det_title = QLabel("Customer Details")
+        det_title.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        det_title.setStyleSheet(f"color: {TEXT}; background: transparent;")
 
         self.price_lbl = QLabel("")
-        self.price_lbl.setStyleSheet(f"color: {SUCCESS}; font-size: 12px;")
+        self.price_lbl.setStyleSheet(
+            f"color: {SUCCESS}; font-size: 13px; font-weight: bold; background: transparent;"
+        )
 
         self.b_name = QLineEdit()
         self.b_name.setPlaceholderText("Customer name")
-        self.b_name.setStyleSheet(INPUT_STYLE)
+        self.b_name.setStyleSheet(UI_INPUT)
 
         self.b_phone = QLineEdit()
         self.b_phone.setPlaceholderText("Phone number")
-        self.b_phone.setStyleSheet(INPUT_STYLE)
+        self.b_phone.setStyleSheet(UI_INPUT)
 
         self.b_email = QLineEdit()
         self.b_email.setPlaceholderText("Email address")
-        self.b_email.setStyleSheet(INPUT_STYLE)
+        self.b_email.setStyleSheet(UI_INPUT)
 
         book_btn = QPushButton("Confirm Booking")
-        book_btn.setStyleSheet(BTN)
+        book_btn.setStyleSheet(UI_BTN)
+        book_btn.setMinimumHeight(42)
+        book_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         book_btn.clicked.connect(self._confirm_booking)
 
-        layout.addWidget(lbl("Listing ID"))
-        layout.addWidget(self.b_listing_id)
-        layout.addWidget(self.listing_info_lbl)
-        layout.addWidget(select_btn)
-        layout.addWidget(self.b_seats_info)
-        layout.addWidget(self.price_lbl)
-        for w, l in [
-            (self.b_name,  "Customer Name"),
-            (self.b_phone, "Customer Phone"),
-            (self.b_email, "Customer Email"),
+        det_cl.addWidget(det_title)
+        det_cl.addSpacing(4)
+        det_cl.addWidget(thin_sep())
+        det_cl.addSpacing(10)
+        det_cl.addWidget(self.price_lbl)
+        det_cl.addSpacing(10)
+        for w, lt in [
+            (self.b_name,  "CUSTOMER NAME"),
+            (self.b_phone, "CUSTOMER PHONE"),
+            (self.b_email, "CUSTOMER EMAIL"),
         ]:
-            layout.addWidget(lbl(l))
-            layout.addWidget(w)
-        layout.addStretch()
-        layout.addWidget(book_btn)
-        return widget
+            det_cl.addWidget(fl(lt))
+            det_cl.addSpacing(6)
+            det_cl.addWidget(w)
+            det_cl.addSpacing(12)
+        det_cl.addSpacing(4)
+        det_cl.addWidget(book_btn)
+
+        form_col = QWidget()
+        form_col.setMinimumWidth(360)
+        form_col.setMaximumWidth(460)
+        form_layout = QVBoxLayout(form_col)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(16)
+        form_layout.addWidget(sel_card)
+        form_layout.addWidget(det_card)
+        form_layout.addStretch()
+
+        content_row = QHBoxLayout()
+        content_row.setContentsMargins(0, 0, 0, 0)
+        content_row.setSpacing(16)
+        content_row.addWidget(form_col)
+
+        seat_col = QWidget()
+        seat_layout = QVBoxLayout(seat_col)
+        seat_layout.setContentsMargins(0, 0, 0, 0)
+        seat_layout.setSpacing(0)
+        seat_layout.addWidget(seat_card)
+        content_row.addWidget(seat_col, 1)
+
+        page_layout.addLayout(hdr_row)
+        page_layout.addLayout(content_row, 1)
+
+        self._set_staff_seat_map_visible(False)
+        outer.setWidget(widget)
+        return outer
 
     def _book_from_listing(self, listing_id):
         index = self.b_listing_id.findData(listing_id)
         if index >= 0:
             self.b_listing_id.setCurrentIndex(index)
-        self.tabs.setCurrentIndex(1)
+        self._set_page(1)
 
     def _load_booking_listing_options(self):
-        listings = self.film_ctrl.get_all_listings()
+        listings = [
+            listing for listing in self.film_ctrl.get_listings_for_cinema(self.user.assigned_cinema_id)
+            if _listing_is_bookable(listing)
+        ]
         films = {f.film_id: f.title for f in self.film_ctrl.get_all_films()}
-        
+
         self.b_listing_id.blockSignals(True)
         self.b_listing_id.clear()
-        
+
         for listing in listings:
             film_title = films.get(listing.film_id, "Unknown")
             display_text = f"{film_title} - {listing.show_date} {listing.show_time}"
             self.b_listing_id.addItem(display_text, listing.listing_id)
-        
-        # Set up searchable completer
+
         self.b_listing_id.setEditable(True)
         self.b_listing_id.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.b_listing_id.setCurrentText("")
+        self.b_listing_id.setCurrentIndex(-1)
         self.b_listing_id.lineEdit().setPlaceholderText("Search listing")
         completer = self.b_listing_id.completer()
         if completer:
             completer.setFilterMode(Qt.MatchFlag.MatchContains)
             completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        
+
         self.b_listing_id.blockSignals(False)
+
+    def _set_staff_seat_map_visible(self, visible):
+        self.b_seat_card.setVisible(visible)
+        self.b_seat_map_title.setVisible(visible)
+        self.b_seat_map_scroll.setVisible(visible)
+
+    def _clear_staff_seat_map(self, message="Select a listing to view seats."):
+        def clear_child_layout(child_layout):
+            while child_layout.count():
+                child_item = child_layout.takeAt(0)
+                child_widget = child_item.widget()
+                nested_layout = child_item.layout()
+                if child_widget:
+                    child_widget.deleteLater()
+                elif nested_layout:
+                    clear_child_layout(nested_layout)
+
+        while self.b_seat_map_layout.count():
+            item = self.b_seat_map_layout.takeAt(0)
+            widget = item.widget()
+            nested = item.layout()
+            if widget:
+                widget.deleteLater()
+            elif nested:
+                clear_child_layout(nested)
+
+        if not message:
+            return
+
+        message_lbl = QLabel(message)
+        message_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_lbl.setWordWrap(True)
+        message_lbl.setStyleSheet(f"color: {MUTED}; font-size: 12px; padding: 24px;")
+        self.b_seat_map_layout.addWidget(message_lbl)
+        self.b_seat_map_layout.addStretch()
+
+    def _staff_available_seat_style(self, base_color):
+        return f"""
+            QPushButton {{
+                background-color: {base_color}; color: {MUTED};
+                border-radius: 3px; border: 1px solid #4a4f52; font-size: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: #5f6368; color: {TEXT}; border-color: {ACCENT};
+            }}
+        """
+
+    def _render_staff_seat_map(self, listing, film_title):
+        seats = self.booking_ctrl.get_seats_for_listing(listing.listing_id)
+        if not seats:
+            self._clear_staff_seat_map("No seats found for this listing.")
+            return
+
+        self._clear_staff_seat_map("")
+
+        header = QLabel(f"{film_title} | {listing.show_date} | {listing.show_time}")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setStyleSheet(f"color: {TEXT}; font-size: 11px; font-weight: bold;")
+
+        screen = QLabel("S  C  R  E  E  N")
+        screen.setFixedHeight(24)
+        screen.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        screen.setStyleSheet(f"""
+            background: qlineargradient(x1:0.5, y1:0, x2:0.5, y2:1,
+                stop:0 #6e7478, stop:1 {INPUT});
+            color: {MUTED}; font-size: 10px; letter-spacing: 5px;
+            border-radius: 4px;
+        """)
+
+        self.b_seat_map_layout.addWidget(header)
+        self.b_seat_map_layout.addWidget(screen)
+
+        seats_per_row = 10
+        available_colors = {
+            "LOWER_HALL": "#3c4043",
+            "UPPER_GALLERY": "#37404a",
+            "VIP": "#3d2e00",
+        }
+        booked_style = """
+            QPushButton {
+                background-color: #1a1c1e; color: #3c4043;
+                border-radius: 3px; border: 1px solid #2a2d30; font-size: 8px;
+            }
+        """
+        labels = {
+            "LOWER_HALL": "Lower Hall",
+            "UPPER_GALLERY": "Upper Gallery",
+            "VIP": "VIP",
+        }
+        groups = {"LOWER_HALL": [], "UPPER_GALLERY": [], "VIP": []}
+        for seat in seats:
+            groups.setdefault(seat[2], []).append(seat)
+
+        self._b_seat_data = {seat[0]: seat for seat in seats}
+        self._b_seat_buttons = {}
+
+        for seat_type in ["LOWER_HALL", "UPPER_GALLERY", "VIP"]:
+            type_seats = groups.get(seat_type, [])
+            if not type_seats:
+                continue
+
+            section_lbl = QLabel(labels.get(seat_type, seat_type))
+            section_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            section_lbl.setStyleSheet(f"color: {MUTED}; font-size: 10px; letter-spacing: 1px;")
+            self.b_seat_map_layout.addWidget(section_lbl)
+
+            for row_index in range((len(type_seats) + seats_per_row - 1) // seats_per_row):
+                row_seats = type_seats[row_index * seats_per_row:(row_index + 1) * seats_per_row]
+                row_widget = QWidget()
+                row_widget.setStyleSheet("background: transparent;")
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(3)
+                row_layout.addStretch()
+
+                row_lbl = QLabel(str(row_index + 1))
+                row_lbl.setFixedWidth(20)
+                row_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                row_lbl.setStyleSheet(f"color: {MUTED}; font-size: 10px;")
+                row_layout.addWidget(row_lbl)
+
+                for col_index, (seat_id, seat_num, st, status) in enumerate(row_seats):
+                    if col_index == 5:
+                        row_layout.addSpacing(12)
+
+                    seat_btn = QPushButton(seat_num)
+                    seat_btn.setFixedSize(46, 28)
+                    if status == "AVAILABLE":
+                        seat_btn.setStyleSheet(self._staff_available_seat_style(available_colors.get(st, INPUT)))
+                        seat_btn.clicked.connect(
+                            lambda _, sid=seat_id, listing_ref=listing: self._toggle_staff_embedded_seat(sid, listing_ref)
+                        )
+                    else:
+                        seat_btn.setStyleSheet(booked_style)
+                        seat_btn.setEnabled(False)
+
+                    self._b_seat_buttons[seat_id] = (seat_btn, st)
+                    row_layout.addWidget(seat_btn)
+
+                row_layout.addStretch()
+                self.b_seat_map_layout.addWidget(row_widget)
+
+        legend = QHBoxLayout()
+        legend.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        for color, label in [
+            (available_colors["LOWER_HALL"], "Available"),
+            ("#FDD835", "Selected"),
+            ("#1a1c1e", "Booked"),
+        ]:
+            box = QLabel()
+            box.setFixedSize(14, 14)
+            box.setStyleSheet(f"background:{color}; border-radius:3px; border:1px solid {BORDER};")
+            text = QLabel(label)
+            text.setStyleSheet(f"color:{MUTED}; font-size:10px;")
+            legend.addWidget(box)
+            legend.addWidget(text)
+            legend.addSpacing(12)
+        self.b_seat_map_layout.addLayout(legend)
+        self.b_seat_map_layout.addStretch()
+
+    def _toggle_staff_embedded_seat(self, seat_id, listing):
+        button, seat_type = self._b_seat_buttons[seat_id]
+        if seat_id in self._selected_seat_ids:
+            self._selected_seat_ids.remove(seat_id)
+            button.setStyleSheet(self._staff_available_seat_style({
+                "LOWER_HALL": "#3c4043",
+                "UPPER_GALLERY": "#37404a",
+                "VIP": "#3d2e00",
+            }.get(seat_type, INPUT)))
+        else:
+            self._selected_seat_ids.append(seat_id)
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #FDD835; color: #202124;
+                    border-radius: 3px; border: none;
+                    font-size: 8px; font-weight: bold;
+                }
+            """)
+
+        self._selected_seat_nums = [
+            self._b_seat_data[sid][1]
+            for sid in self._selected_seat_ids
+        ]
+        if self._selected_seat_nums:
+            self.b_seats_info.setText(f"Seats: {', '.join(self._selected_seat_nums)}")
+            total = self.booking_ctrl.calculate_price_for_seat_ids(
+                self.user.assigned_cinema_id, listing.show_time_category, self._selected_seat_ids)
+            self.price_lbl.setText(f"Total Price: £{total:.2f}")
+        else:
+            self.b_seats_info.setText("No seats selected")
+            self.price_lbl.setText("")
 
     def _on_listing_changed(self, index):
         if index < 0:
             return
         listing_id = self.b_listing_id.currentData()
         if listing_id is None:
+            self._set_staff_seat_map_visible(False)
+            self._clear_staff_seat_map()
             return
         self._selected_seat_ids = []
         self._selected_seat_nums = []
@@ -694,6 +1222,8 @@ class StaffView(QMainWindow):
                 border: 1px solid {BORDER}; border-radius: 4px;
                 padding: 8px 10px; font-size: 12px;
             """)
+            self._set_staff_seat_map_visible(False)
+            self._clear_staff_seat_map()
             return
         films = {f.film_id: f.title for f in self.film_ctrl.get_all_films()}
         film_title = films.get(listing.film_id, "Unknown Film")
@@ -706,6 +1236,8 @@ class StaffView(QMainWindow):
             border: 1px solid {ACCENT}; border-radius: 4px;
             padding: 8px 10px; font-size: 12px; font-weight: bold;
         """)
+        self._set_staff_seat_map_visible(True)
+        self._render_staff_seat_map(listing, film_title)
 
     def _open_seat_map(self):
         listing_id = self.b_listing_id.currentData()
@@ -738,8 +1270,7 @@ class StaffView(QMainWindow):
                 cinema_id, listing.show_time_category, selected)
             self.b_seats_info.setText(
                 f"Seats: {', '.join(self._selected_seat_nums)}")
-            self.price_lbl.setText(f"Total Price: \u00a3{total}")
-            self.price_lbl.setStyleSheet(f"color: {SUCCESS}; font-size: 13px;")
+            self.price_lbl.setText(f"Total Price: £{total:.2f}")
 
     def _confirm_booking(self):
         listing_id = self.b_listing_id.currentData()
@@ -771,11 +1302,17 @@ class StaffView(QMainWindow):
             cinema_id, listing.show_time_category, self._selected_seat_ids)
 
         customer_id = self.booking_ctrl.get_customer_or_create(name, phone, email)
+        if customer_id is None:
+            QMessageBox.warning(
+                self,
+                "Invalid Customer Details",
+                getattr(self.booking_ctrl, "last_error", "") or "Please check the customer details.")
+            return
 
         booking_ref = self.booking_ctrl.create_booking_with_seats(
             self.user.user_id, listing_id, customer_id,
             self._selected_seat_ids, cinema_id,
-            listing.show_time_category)
+            listing.show_time_category, self.user)
 
         if booking_ref:
             seat_nums = self._selected_seat_nums
@@ -783,8 +1320,11 @@ class StaffView(QMainWindow):
             booking_date = self.booking_ctrl.get_booking_date_for_reference(booking_ref)
             self._selected_seat_ids = []
             self._selected_seat_nums = []
+            for field in [self.b_name, self.b_phone, self.b_email]:
+                field.clear()
             self.b_seats_info.setText("No seats selected")
             self.price_lbl.setText("")
+            self._render_staff_seat_map(listing, film_title)
             ticket = TicketDialog(
                 self, booking_ref, film_title, cinema_name, city_name,
                 listing.show_date, listing.show_time,
@@ -796,31 +1336,92 @@ class StaffView(QMainWindow):
         else:
             QMessageBox.critical(self, "Failed", "Booking failed. Please try again.")
 
+    # ── Cancel Booking page ───────────────────────────────────────────────
+
     def _build_cancel_tab(self):
         widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(10)
+        widget.setObjectName("pageShell")
+        root = QVBoxLayout(widget)
+        root.setContentsMargins(28, 28, 28, 28)
+        root.setSpacing(20)
+
+        # Page header
+        hdr = QVBoxLayout()
+        hdr.setSpacing(4)
+        title = QLabel("Cancel Booking")
+        title.setStyleSheet(f"color: {TEXT}; font-size: 22px; font-weight: 700;")
+        sub = QLabel("Void a reservation and issue a refund")
+        sub.setStyleSheet(f"color: {MUTED}; font-size: 12px;")
+        hdr.addWidget(title)
+        hdr.addWidget(sub)
+        root.addLayout(hdr)
+
+        # Content row — centred card
+        content_row = QHBoxLayout()
+        content_row.setSpacing(16)
+
+        card = QFrame()
+        card.setObjectName("actionCard")
+        card.setStyleSheet(f"""
+            QFrame#actionCard {{
+                background-color: {CARD};
+                border: 1px solid {BORDER};
+                border-radius: 4px;
+            }}
+        """)
+        card.setFixedWidth(520)
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(20, 20, 20, 20)
+        cl.setSpacing(14)
+
+        card_title = QLabel("Void Reservation")
+        card_title.setStyleSheet(
+            f"color: {TEXT}; font-size: 14px; font-weight: 600; background: transparent;"
+        )
+        card_sub = QLabel("Enter the booking reference to cancel")
+        card_sub.setStyleSheet(
+            f"color: {MUTED}; font-size: 11px; background: transparent;"
+        )
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(f"color: {BORDER}; background: {BORDER}; max-height: 1px;")
 
         ref_lbl = QLabel("Booking Reference")
-        ref_lbl.setStyleSheet(f"color: {MUTED}; font-size: 12px;")
+        ref_lbl.setStyleSheet(
+            f"color: {MUTED}; font-size: 11px; font-weight: 500; background: transparent;"
+        )
 
         self.cancel_ref = QLineEdit()
         self.cancel_ref.setPlaceholderText("e.g. BK-A3F92B1C")
-        self.cancel_ref.setStyleSheet(INPUT_STYLE)
+        self.cancel_ref.setStyleSheet(UI_INPUT)
 
         cancel_btn = QPushButton("Cancel Booking")
-        cancel_btn.setStyleSheet(BTN_DANGER)
+        cancel_btn.setStyleSheet(UI_BTN_DANGER)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self._cancel_booking)
 
         self.cancel_result = QLabel("")
-        self.cancel_result.setStyleSheet(f"color: {MUTED}; font-size: 13px;")
+        self.cancel_result.setWordWrap(True)
+        self.cancel_result.setStyleSheet(
+            f"color: {MUTED}; font-size: 12px; background: transparent;"
+        )
+        self.cancel_result.hide()
 
-        layout.addWidget(ref_lbl)
-        layout.addWidget(self.cancel_ref)
-        layout.addWidget(cancel_btn)
-        layout.addWidget(self.cancel_result)
-        layout.addStretch()
+        cl.addWidget(card_title)
+        cl.addWidget(card_sub)
+        cl.addWidget(divider)
+        cl.addWidget(ref_lbl)
+        cl.addWidget(self.cancel_ref)
+        cl.addWidget(cancel_btn)
+        cl.addWidget(self.cancel_result)
+        cl.addStretch()
+
+        content_row.addStretch()
+        content_row.addWidget(card)
+        content_row.addStretch()
+
+        root.addLayout(content_row)
+        root.addStretch()
         return widget
 
     def _cancel_booking(self):
@@ -828,15 +1429,22 @@ class StaffView(QMainWindow):
         if not ref:
             QMessageBox.warning(self, "Input Error", "Please enter a booking reference.")
             return
-        refund = self.cancel_ctrl.cancel_booking(ref)
+        refund = self.cancel_ctrl.cancel_booking(ref, self.user)
         if refund is not None:
             self.cancel_result.setText(
-                f"Booking {ref} cancelled.\nRefund amount: £{refund:.2f}")
-            self.cancel_result.setStyleSheet(f"color: {SUCCESS}; font-size: 13px;")
+                f"Booking {ref} cancelled. Refund: £{refund:.2f}")
+            self.cancel_result.setStyleSheet(
+                f"color: {ACCENT}; font-size: 12px; background: transparent;"
+            )
+            self.cancel_ref.clear()
         else:
             self.cancel_result.setText(
-                "Cancellation failed. Check the reference or the show may be today/past.")
-            self.cancel_result.setStyleSheet(f"color: {DANGER}; font-size: 13px;")
+                getattr(self.cancel_ctrl, "last_error", "") or
+                "Cancellation failed. Check the reference and try again.")
+            self.cancel_result.setStyleSheet(
+                f"color: {DANGER}; font-size: 12px; background: transparent;"
+            )
+        self.cancel_result.show()
 
     def _logout(self):
         from view.login_view import LoginView

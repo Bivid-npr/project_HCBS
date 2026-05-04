@@ -83,7 +83,7 @@ class CinemaController:
             return True
         except Exception as e:
             conn.rollback()
-            print("Error adding cinema:", e)
+            print("Error adding cinema.")
             return False
         finally:
             cur.close()
@@ -104,7 +104,7 @@ class CinemaController:
             return city_id
         except Exception as e:
             conn.rollback()
-            print("Error adding city:", e)
+            print("Error adding city.")
             cur.close()
             conn.close()
             return None
@@ -152,7 +152,7 @@ class CinemaController:
             return created_screen_ids
         except Exception as e:
             conn.rollback()
-            print("Error configuring screen:", e)
+            print("Error configuring screen.")
             return []
         finally:
             cur.close()
@@ -172,7 +172,7 @@ class CinemaController:
             return updated
         except Exception as e:
             conn.rollback()
-            print("Error configuring existing screen:", e)
+            print("Error configuring existing screen.")
             return False
         finally:
             cur.close()
@@ -205,7 +205,7 @@ class CinemaController:
             return True
         except Exception as e:
             conn.rollback()
-            print("Error setting pricing:", e)
+            print("Error setting pricing.")
             return False
         finally:
             cur.close()
